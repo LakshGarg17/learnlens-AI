@@ -1,25 +1,13 @@
 import React, { useState } from 'react';
-import { UploadCloud, FileText, Search, Check, AlertCircle } from 'lucide-react';
+import { UploadCloud, Search, Check } from 'lucide-react';
+import FileUpload from './FileUpload';
 
-export default function UploadSection() {
-  const [selectedFile, setSelectedFile] = useState(null);
+export default function UploadSection({ onUploadSuccess }) {
   const [topic, setTopic] = useState('');
-
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-        setSelectedFile(file);
-        // TODO: Day 2 - handle PDF upload and extraction via FastAPI backend
-      } else {
-        alert('Please select a valid PDF file.');
-      }
-    }
-  };
 
   const handleTopicChange = (e) => {
     setTopic(e.target.value);
-    // TODO: Day 2 - prepare prompt context for manual topic input
+    // TODO: Day 3 - prepare prompt context for manual topic input
   };
 
   return (
@@ -27,43 +15,19 @@ export default function UploadSection() {
       <div className="section-header">
         <h2 className="section-title">📚 Upload Study Material</h2>
         <p className="section-description">
-          Choose between uploading a PDF document or entering a specific topic to study.
+          Upload a PDF document to extract its text, or enter a specific topic to study.
         </p>
       </div>
 
       <div className="upload-grid">
         {/* Option 1: PDF File Uploader */}
-        <div className={`upload-box ${selectedFile ? 'has-file' : ''}`}>
+        <div className="upload-box">
           <div className="upload-box-header">
             <UploadCloud size={24} className="box-icon" />
             <h3 className="box-title">Upload PDF Document</h3>
           </div>
-          
-          <label className="file-drop-area" htmlFor="pdf-upload">
-            <input
-              id="pdf-upload"
-              type="file"
-              accept=".pdf"
-              onChange={handleFileChange}
-              className="file-input-hidden"
-            />
-            {selectedFile ? (
-              <div className="file-info-preview">
-                <FileText size={28} className="text-accent" />
-                <div className="file-details">
-                  <span className="file-name">{selectedFile.name}</span>
-                  <span className="file-size">{(selectedFile.size / 1024).toFixed(1)} KB</span>
-                </div>
-                <span className="badge-ready">Ready</span>
-              </div>
-            ) : (
-              <div className="upload-placeholder">
-                <FileText size={32} className="placeholder-icon" />
-                <span className="primary-prompt">Click to browse or drop PDF here</span>
-                <span className="secondary-prompt">Supports .pdf files up to 25MB</span>
-              </div>
-            )}
-          </label>
+
+          <FileUpload onUploadSuccess={onUploadSuccess} />
         </div>
 
         {/* Option 2: Topic Input */}
