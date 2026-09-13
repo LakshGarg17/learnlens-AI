@@ -73,19 +73,16 @@ Frontend will run at: `http://localhost:5173`
 
 ---
 
-## 🛠️ Day 1 Feature Status
+- [x] **Day 1**: FastAPI scaffolding, CORS, environment configuration, secure AI client, health endpoints.
+- [x] **Day 2**: PDF ingestion, multipart upload, byte-level parsing, and text extraction preview.
+- [x] **Day 3**:
+  - `POST /summarize` & `POST /api/summarize` — AI exam summarization.
+  - `POST /ask` & `POST /api/ask` — Contextual Q&A strictly grounded in uploaded notes.
+  - `POST /explain` & `POST /api/explain` — Simple concept breakdown with real-world analogies.
+- [x] **Day 4**:
+  - `POST /generate-quiz` & `POST /api/generate-quiz` — AI-powered MCQ Quiz generation.
+  - **Question Counts**: 5, 10, or 15 questions.
+  - **Difficulties**: Easy (recall), Medium (conceptual), Hard (analytical).
+  - **Interactive Workflow**: Question-by-question view with progress tracking, 4 options (A-D), submission, automated scoring, answer explanations, and retake/retry flow.
+- [ ] **Day 5**: Flashcards & spaced repetition (Coming soon).
 
-- [x] **FastAPI Scaffolding & CORS**: Allows requests from `http://localhost:5173`.
-- [x] **Secure AI Client (`ai_client.py`)**: Environment-based Anthropic client with `test_connection()`.
-- [x] **Health & Connectivity Endpoints**:
-  - `GET /api/health` → `{"status": "ok"}`
-  - `GET /api/test-ai-connection` → Live Anthropic test
-- [x] **Day 1 Placeholder Routes**:
-  - `POST /api/summarize`
-  - `POST /api/ask-question`
-  - `POST /api/generate-quiz`
-  - `POST /api/flashcards`
-- [x] **React UI Shell**:
-  - Upload Section: PDF document picker (`.pdf`) & manual topic input
-  - Action Buttons: Summarize, Ask Question, Generate Quiz, Flashcards
-  - Real-time Backend Health indicator & Live AI Key Test button
