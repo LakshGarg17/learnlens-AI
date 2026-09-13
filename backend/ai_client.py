@@ -4,9 +4,12 @@ Handles API key loading, Anthropic client initialization, and connectivity verif
 """
 
 import os
-from typing import Dict, Any, Optional
+import json
+import re
+from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 import anthropic
+
 
 # Load environment variables from .env in backend
 load_dotenv()
@@ -271,6 +274,184 @@ def explain_topic(text: str, topic: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Failed to generate explanation: {str(e)}"}
 
 
+def _extract_json_from_text(raw_text: str) -> Any:
+    """Safely extract and parse JSON from raw LLM output."""
+    cleaned = (raw_text or "").strip()
+    if not cleaned:
+        raise ValueError("AI returned an empty response.")
+
+    # If wrapped in markdown code blocks like ```json ... ``` or ``` ... ```
+    if "```" in cleaned:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE)
+        if match:
+            cleaned = match.group(1).strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Fallback: find outermost [ ... ] or { ... }
+        start_bracket = cleaned.find("[")
+        end_bracket = cleaned.rfind("]")
+        if start_bracket != -1 and end_bracket != -1 and end_bracket > start_bracket:
+            sub = cleaned[start_bracket : end_bracket + 1]
+            return json.loads(sub)
+
+        start_brace = cleaned.find("{")
+        end_brace = cleaned.rfind("}")
+        if start_brace != -1 and end_brace != -1 and end_brace > start_brace:
+            sub = cleaned[start_brace : end_brace + 1]
+            parsed = json.loads(sub)
+            if isinstance(parsed, dict) and "questions" in parsed and isinstance(parsed["questions"], list):
+                return parsed["questions"]
+            return [parsed]
+
+        raise ValueError("Could not parse valid JSON from AI response.")
+
+
+def _validate_quiz_structure(questions_data: Any, requested_count: int) -> List[Dict[str, Any]]:
+    """
+    Validate the structure of parsed quiz questions.
+    Returns a list of clean, validated question dictionaries.
+    Raises ValueError if the structure does not meet required specifications.
+    """
+    if isinstance(questions_data, dict) and "questions" in questions_data:
+        questions_data = questions_data["questions"]
+
+    if not isinstance(questions_data, list):
+        raise ValueError("AI output was not a list of questions.")
+
+    validated = []
+    seen_questions = set()
+
+    for item in questions_data:
+        if not isinstance(item, dict):
+            continue
+
+        q_text = str(item.get("question", "")).strip()
+        options = item.get("options")
+        correct_ans = item.get("correct_answer")
+        explanation = str(item.get("explanation", "")).strip()
+
+        if not q_text or q_text in seen_questions:
+            continue
+
+        if not isinstance(options, list) or len(options) != 4:
+            continue
+
+        cleaned_options = [str(opt).strip() for opt in options]
+        if any(not opt for opt in cleaned_options):
+            continue
+
+        if isinstance(correct_ans, str) and correct_ans.isdigit():
+            correct_ans = int(correct_ans)
+        if not isinstance(correct_ans, int) or correct_ans not in [0, 1, 2, 3]:
+            continue
+
+        if not explanation:
+            explanation = f"Option {chr(65 + correct_ans)} is the correct answer based on the study material."
+
+        seen_questions.add(q_text)
+        validated.append({
+            "question": q_text,
+            "options": cleaned_options,
+            "correct_answer": correct_ans,
+            "explanation": explanation,
+        })
+
+    if not validated:
+        raise ValueError("AI response did not contain any valid multiple choice questions.")
+
+    return validated
+
+
+def generate_quiz(text: str, num_questions: int = 5, difficulty: str = "medium") -> Dict[str, Any]:
+    """
+    Generate an exam-ready multiple-choice quiz strictly based on the provided study material.
+
+    Args:
+        text: Raw text of the study material / extracted PDF.
+        num_questions: Desired number of questions (5, 10, or 15).
+        difficulty: Complexity level ('easy', 'medium', 'hard').
+
+    Returns:
+        Dict containing:
+            - success (bool): True if generated and validated successfully
+            - questions (list, optional): List of validated MCQ objects
+            - error (str, optional): Error description if generation failed
+    """
+    cleaned_text = (text or "").strip()
+    if not cleaned_text:
+        return {"success": False, "error": "No study material provided for quiz generation."}
+
+    diff = (difficulty or "medium").lower().strip()
+    if diff not in ["easy", "medium", "hard"]:
+        diff = "medium"
+
+    count = int(num_questions) if isinstance(num_questions, (int, str)) and str(num_questions).isdigit() else 5
+    if count not in [5, 10, 15]:
+        count = 5
+
+    safe_text = _prepare_document_text(cleaned_text)
+
+    system_prompt = (
+        "You are an expert university professor and examination board specialist.\n"
+        "Your task is to generate a high-quality Multiple Choice Quiz (MCQ) based STRICTLY and ONLY on the provided study material.\n\n"
+        "Core Guidelines:\n"
+        f"1. Generate exactly {count} multiple choice questions.\n"
+        f"2. Difficulty level: {diff.upper()}.\n"
+        "   - EASY: Direct recall of key definitions, core terms, and fundamental concepts stated in the notes.\n"
+        "   - MEDIUM: Conceptual comprehension, distinguishing between related ideas, and standard application.\n"
+        "   - HARD: In-depth analytical questions, edge cases, multi-step reasoning, and evaluating mechanisms described in the text.\n"
+        "3. Each question must have EXACTLY 4 distinct options (avoid 'All of the above' or 'None of the above').\n"
+        "4. Exactly ONE option must be correct. 'correct_answer' must be the 0-indexed integer position (0, 1, 2, or 3) of the correct option.\n"
+        "5. Provide a clear, educational explanation detailing why the correct answer is right according to the study material.\n"
+        "6. Do NOT invent facts or test external knowledge not present in the study material.\n"
+        "7. Avoid duplicate questions.\n"
+        "8. Output MUST be ONLY a valid JSON array of question objects, with NO surrounding conversational commentary or preamble.\n\n"
+        "Expected JSON Schema:\n"
+        "[\n"
+        "  {\n"
+        '    "question": "What is ...?",\n'
+        '    "options": ["Option A", "Option B", "Option C", "Option D"],\n'
+        '    "correct_answer": 1,\n'
+        '    "explanation": "..."\n'
+        "  }\n"
+        "]"
+    )
+
+    user_prompt = (
+        f"<study_material>\n{safe_text}\n</study_material>\n\n"
+        f"Generate {count} {diff}-difficulty multiple-choice questions from the study material above. "
+        "Return ONLY the JSON array."
+    )
+
+    max_tokens = min(4096, max(1200, count * 350))
+
+    try:
+        client = get_anthropic_client()
+        model_name = get_model()
+        response = client.messages.create(
+            model=model_name,
+            max_tokens=max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        reply_text = response.content[0].text if response.content else ""
+        parsed_json = _extract_json_from_text(reply_text)
+        validated_questions = _validate_quiz_structure(parsed_json, count)
+
+        return {
+            "success": True,
+            "questions": validated_questions[:count],
+        }
+    except ValueError as ve:
+        return {"success": False, "error": str(ve)}
+    except anthropic.APIError as ae:
+        return {"success": False, "error": f"AI service error ({ae.status_code}): {ae.message}"}
+    except Exception as e:
+        return {"success": False, "error": f"Failed to generate quiz: {str(e)}"}
+
+
 if __name__ == "__main__":
     print("Testing Anthropic connection...")
     result = test_connection()
@@ -278,4 +459,5 @@ if __name__ == "__main__":
         print(f"[SUCCESS] Response from {result.get('model')}: {result['message']}")
     else:
         print(f"[INFO] Connection status: {result['message']}")
+
 

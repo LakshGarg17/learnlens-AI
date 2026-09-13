@@ -7,13 +7,13 @@ Day 2: PDF Upload & Text Extraction
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from ai_client import test_connection, summarize_text, answer_question, explain_topic
+from ai_client import test_connection, summarize_text, answer_question, explain_topic, generate_quiz
 from pdf_parser import extract_text_from_pdf, PDFExtractionError
 
 app = FastAPI(
     title="LearnLens AI - Study Assistant API",
     description="Backend API for AI Study Assistant powered by Anthropic",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 # Enable CORS middleware for frontend communication
@@ -46,6 +46,13 @@ class AskRequest(BaseModel):
 class ExplainRequest(BaseModel):
     text: str = Field(..., description="Study material context text")
     topic: str = Field(..., description="Topic or concept to explain simply")
+
+
+class QuizRequest(BaseModel):
+    text: str = Field(..., description="Study material context text to generate quiz from")
+    num_questions: int = Field(5, description="Number of questions (5, 10, or 15)")
+    difficulty: str = Field("medium", description="Difficulty level ('easy', 'medium', 'hard')")
+
 
 
 @app.get("/api/health")
@@ -232,14 +239,56 @@ def api_explain_endpoint(payload: ExplainRequest):
     return handle_explain(payload)
 
 
-# --- Coming Soon Placeholders (Day 4/5) ---
+# --- Day 4 Quiz Endpoints ---
+
+def handle_generate_quiz(payload: QuizRequest):
+    study_text = (payload.text or "").strip()
+    if not study_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide study material text before generating a quiz.",
+        )
+
+    num_q = payload.num_questions
+    if num_q not in [5, 10, 15]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid number of questions: {num_q}. Supported options are 5, 10, or 15.",
+        )
+
+    diff = (payload.difficulty or "").strip().lower()
+    if diff not in ["easy", "medium", "hard"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid difficulty: '{payload.difficulty}'. Supported options are 'easy', 'medium', or 'hard'.",
+        )
+
+    result = generate_quiz(study_text, num_questions=num_q, difficulty=diff)
+    if not result.get("success"):
+        error_msg = result.get("error", "Unable to generate the quiz. Please try again.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
+    return {
+        "success": True,
+        "questions": result["questions"],
+    }
+
+
+@app.post("/generate-quiz")
+def generate_quiz_endpoint(payload: QuizRequest):
+    return handle_generate_quiz(payload)
+
 
 @app.post("/api/generate-quiz")
-def generate_quiz_placeholder():
-    return {
-        "status": "coming_soon",
-        "message": "AI-powered quiz generation feature coming in Day 4!",
-    }
+def api_generate_quiz_endpoint(payload: QuizRequest):
+    return handle_generate_quiz(payload)
+
+
+# --- Coming Soon Placeholders (Day 5) ---
+
 
 
 @app.post("/api/flashcards")
