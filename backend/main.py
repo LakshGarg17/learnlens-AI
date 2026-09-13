@@ -6,13 +6,14 @@ Day 2: PDF Upload & Text Extraction
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from ai_client import test_connection
+from pydantic import BaseModel, Field
+from ai_client import test_connection, summarize_text, answer_question, explain_topic
 from pdf_parser import extract_text_from_pdf, PDFExtractionError
 
 app = FastAPI(
     title="LearnLens AI - Study Assistant API",
     description="Backend API for AI Study Assistant powered by Anthropic",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 # Enable CORS middleware for frontend communication
@@ -29,6 +30,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Request Models ---
+
+class SummarizeRequest(BaseModel):
+    text: str = Field(..., description="Study material text to summarize")
+
+
+class AskRequest(BaseModel):
+    text: str = Field(..., description="Study material context text")
+    question: str = Field(..., description="Student question to answer")
+
+
+class ExplainRequest(BaseModel):
+    text: str = Field(..., description="Study material context text")
+    topic: str = Field(..., description="Topic or concept to explain simply")
 
 
 @app.get("/api/health")
@@ -90,7 +107,6 @@ async def upload_pdf(file: UploadFile = File(...)):
             detail=f"An unexpected error occurred during PDF text extraction: {str(e)}",
         )
 
-    # TODO: Day 3 - store full_text in session/state so Summarize/Ask Question/Quiz/Flashcards can use it
     return {
         "filename": extracted_data["filename"],
         "page_count": extracted_data["page_count"],
@@ -99,45 +115,143 @@ async def upload_pdf(file: UploadFile = File(...)):
     }
 
 
-# --- Action Route Placeholders (Day 1 Scaffolding) ---
+# --- Day 3 AI Endpoints ---
+
+def handle_summarize(payload: SummarizeRequest):
+    study_text = (payload.text or "").strip()
+    if not study_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide study material text to summarize.",
+        )
+
+    result = summarize_text(study_text)
+    if not result.get("success"):
+        error_msg = result.get("error", "Unable to generate the summary. Please try again.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
+    return {
+        "success": True,
+        "summary": result["summary"],
+    }
+
+
+@app.post("/summarize")
+def summarize_endpoint(payload: SummarizeRequest):
+    return handle_summarize(payload)
+
 
 @app.post("/api/summarize")
-def summarize_placeholder():
-    # TODO: Day 2 - wire up summarization logic here
+def api_summarize_endpoint(payload: SummarizeRequest):
+    return handle_summarize(payload)
+
+
+def handle_ask(payload: AskRequest):
+    study_text = (payload.text or "").strip()
+    question = (payload.question or "").strip()
+
+    if not study_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide study material text before asking a question.",
+        )
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter a question to ask.",
+        )
+
+    result = answer_question(study_text, question)
+    if not result.get("success"):
+        error_msg = result.get("error", "Unable to answer your question. Please try again.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
     return {
-        "status": "coming_soon",
-        "message": "Document and topic summarization feature coming soon!",
+        "success": True,
+        "answer": result["answer"],
     }
+
+
+@app.post("/ask")
+def ask_endpoint(payload: AskRequest):
+    return handle_ask(payload)
+
+
+@app.post("/api/ask")
+def api_ask_endpoint(payload: AskRequest):
+    return handle_ask(payload)
 
 
 @app.post("/api/ask-question")
-def ask_question_placeholder():
-    # TODO: Day 2 - wire up Q&A and contextual chat logic here
+def api_ask_question_endpoint(payload: AskRequest):
+    return handle_ask(payload)
+
+
+def handle_explain(payload: ExplainRequest):
+    study_text = (payload.text or "").strip()
+    topic = (payload.topic or "").strip()
+
+    if not study_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide study material text to explain topics from.",
+        )
+    if not topic:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please enter a topic or concept to explain.",
+        )
+
+    result = explain_topic(study_text, topic)
+    if not result.get("success"):
+        error_msg = result.get("error", "Unable to generate the explanation. Please try again.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
     return {
-        "status": "coming_soon",
-        "message": "Interactive Q&A feature coming soon!",
+        "success": True,
+        "explanation": result["explanation"],
     }
 
 
+@app.post("/explain")
+def explain_endpoint(payload: ExplainRequest):
+    return handle_explain(payload)
+
+
+@app.post("/api/explain")
+def api_explain_endpoint(payload: ExplainRequest):
+    return handle_explain(payload)
+
+
+# --- Coming Soon Placeholders (Day 4/5) ---
+
 @app.post("/api/generate-quiz")
 def generate_quiz_placeholder():
-    # TODO: Day 3 - wire up quiz generation and scoring logic here
     return {
         "status": "coming_soon",
-        "message": "AI-powered quiz generation feature coming soon!",
+        "message": "AI-powered quiz generation feature coming in Day 4!",
     }
 
 
 @app.post("/api/flashcards")
 def flashcards_placeholder():
-    # TODO: Day 3 - wire up flashcard extraction and spaced-repetition logic here
     return {
         "status": "coming_soon",
-        "message": "Interactive flashcard generator feature coming soon!",
+        "message": "Interactive flashcard generator feature coming in Day 5!",
     }
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
 
