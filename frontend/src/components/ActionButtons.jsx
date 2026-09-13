@@ -31,9 +31,9 @@ export default function ActionButtons({ activeFeature, onSelectFeature, hasDocum
       label: 'Generate Quiz',
       icon: BrainCircuit,
       description: 'Test your understanding with AI quizzes',
-      isLive: false,
-      message: 'Feature coming in Day 4: AI Knowledge Checks & Quizzes',
+      isLive: true,
     },
+
     {
       id: 'flashcards',
       label: 'Flashcards',

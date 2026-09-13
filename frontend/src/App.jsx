@@ -7,6 +7,7 @@ import ActionButtons from './components/ActionButtons';
 import Summary from './components/Summary';
 import AskAI from './components/AskAI';
 import ExplainTopic from './components/ExplainTopic';
+import Quiz from './components/Quiz';
 import './App.css';
 
 function App() {
@@ -68,11 +69,18 @@ function App() {
               filename={documentData?.filename}
             />
           )}
+
+          {activeFeature === 'quiz' && (
+            <Quiz
+              fullText={documentData?.full_text}
+              filename={documentData?.filename}
+            />
+          )}
         </div>
 
         {/* Footer info */}
         <footer className="app-footer">
-          <p>LearnLens AI • Day 3: Intelligent AI Study Assistant (Summary, Q&amp;A, Simplifier)</p>
+          <p>LearnLens AI • Day 4: AI-Powered MCQ Quiz System &amp; Knowledge Check</p>
         </footer>
       </div>
     </div>
@@ -80,4 +88,5 @@ function App() {
 }
 
 export default App;
+
 
